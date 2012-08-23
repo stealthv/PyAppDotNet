@@ -59,26 +59,7 @@ class Description(object):
     def __init__(self, **kwargs):
         self.text = kwargs['text']
         self.html = kwargs['html']
-        self.entities = kwargs['entities']
-        # "entities": {
-        #    "mentions": [{
-        #        "name": "appdotnet",
-        #        "id": "3",
-        #        "pos": 52,
-        #        "len": 10
-        #    }],
-        #    "hashtags": [{
-        #        "name": "api",
-        #        "pos": 70,
-        #        "len": 4
-        #    }],
-        #    "links": [{
-        #        "text": "teaching you",
-        #        "url": "https://github.com/appdotnet/api-spec",
-        #        "pos": 29,
-        #        "len": 12
-        #    }]
-        # }
+        self.entities = Entities(**kwargs['entities'])
 
 
 class ImageData(object):
@@ -97,6 +78,95 @@ class ImageData(object):
     def get_image(self):
         response = urllib2.urlopen(self.url)
         return response.read()
+
+
+class Post(object):
+    def __init__(self, **kwargs):
+        self.id = kwargs['id']
+        self.user = None
+        if 'user' in kwargs:  # may be omitted (e.g. if the user account has been deleted)
+            self.user = UserData(**kwargs['user'])
+        self.is_deleted = kwargs.get('is_deleted', False)  # may be omitted if not deleted
+        self.created_at = kwargs['created_at']
+        self.text = kwargs.get('text', '')  # may be omitted if deleted
+        self.html = kwargs.get('html', '')  # may be omitted if deleted
+        self.source = Source(**kwargs['source'])
+        self.reply_to = kwargs['reply_to']
+        self.thread_id = kwargs['thread_id']
+        self.num_replies = kwargs['num_replies']
+        self.annotations = kwargs['annotations']  # key-value metadata (not well defined yet)
+        # "annotations": {
+        #     "wellknown:geo": {
+        #         "type": "Point",
+        #         "coordinates": [102.0, .5]
+        #     }
+        # },
+        if 'entities' in kwargs:  # may be omitted if deleted
+            self.entities = Entities(**kwargs['entities'])
+        else:
+            self.entities = Entities()
+
+
+class Entities(object):
+    """ A set of entities """
+    def __init__(self, mentions=[], hashtags=[], links=[]):
+        self.mentions = self._createEntityList(mentions, MentionEntity)
+        self.hashtags = self._createEntityList(hashtags, HashtagEntity)
+        self.links = self._createEntityList(links, MentionEntity)
+
+    def _createEntityList(self, provided_data, entity_class):
+        entity_list = []
+        for entity_data in provided_data:
+            entity_list.append(entity_class(**entity_data))
+
+
+class MentionEntity(object):
+    """ A mention type of entity """
+    def __init__(self, **kwargs):
+        self.name = kwargs['name']
+        self.id = kwargs['id']
+        self.pos = kwargs['pos']
+        self.len = kwargs['len']
+
+
+class HashtagEntity(object):
+    """ A hashtag type of entity """
+    def __init__(self, **kwargs):
+        self.name = kwargs['name']
+        self.pos = kwargs['pos']
+        self.len = kwargs['len']
+
+
+class LinkEntity(object):
+    """ A link type of entity """
+    def __init__(self, **kwargs):
+        self.text = kwargs['text']
+        self.url = kwargs['url']
+        self.pos = kwargs['pos']
+        self.len = kwargs['len']
+
+
+class Filter(object):
+    """ A whitelist or blacklist for a post stream. """
+    def __init__(self, **kwargs):
+        # The example in the api shows an id field but the description doesn't mention it.
+        if 'id' in kwargs:
+            self.id = kwargs['id']
+        self.type = kwargs['type']
+        # Check that it's a valid type
+        if self.type not in ['show', 'block']:
+            raise AppDotNetError("Unrecognized filter type :%s" % self.type, None)
+        self.name = kwargs['name']
+        self.user_ids = kwargs['user_ids']
+        self.hashtags = kwargs['hashtags']
+        self.link_domains = kwargs['link_domains']
+        self.mention_user_ids = kwargs['mention_user_ids']
+
+
+class Source(object):
+    def __init__(self, name, link):
+        self.name = name
+        self.link = link
 
 
 class AppDotNet(object):
