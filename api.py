@@ -21,7 +21,6 @@ class AppDotNetError(Exception):
 
 class UserData(object):
     def __init__(self, **kwargs):
-        print kwargs
         self.id = kwargs['id']
         self.username = kwargs['username']
         self.name = kwargs['name']
@@ -53,6 +52,12 @@ class UserData(object):
             self.you_follow = kwargs['you_follow']
         if ('you_muted' in kwargs):
             self.you_muted = kwargs['you_muted']
+
+    def __unicode__(self):
+        return u'user @' + self.username + u' [' + self.id + ']'
+
+    def __str__(self):
+        return self.__unicode__()
 
 
 class Description(object):
@@ -91,20 +96,27 @@ class Post(object):
         self.text = kwargs.get('text', '')  # may be omitted if deleted
         self.html = kwargs.get('html', '')  # may be omitted if deleted
         self.source = Source(**kwargs['source'])
-        self.reply_to = kwargs['reply_to']
+        self.reply_to = kwargs.get('reply_to', None)  # api docs imply that this will always exist but it doesn't
         self.thread_id = kwargs['thread_id']
         self.num_replies = kwargs['num_replies']
-        self.annotations = kwargs['annotations']  # key-value metadata (not well defined yet)
-        # "annotations": {
-        #     "wellknown:geo": {
-        #         "type": "Point",
-        #         "coordinates": [102.0, .5]
-        #     }
-        # },
+        if 'annotations' in kwargs:  # doesn't seem to always exist - maybe not implemented yet
+            self.annotations = kwargs['annotations']  # key-value metadata (not well defined yet)
+            # "annotations": {
+            #     "wellknown:geo": {
+            #         "type": "Point",
+            #         "coordinates": [102.0, .5]
+            #     }
+            # },
         if 'entities' in kwargs:  # may be omitted if deleted
             self.entities = Entities(**kwargs['entities'])
         else:
             self.entities = Entities()
+
+    def __unicode__(self):
+        return u'Post #' + self.id + u' by: ' + unicode(self.user) + ' -- ' + self.text
+
+    def __str__(self):
+        return self.__unicode__()
 
 
 class Entities(object):
@@ -112,7 +124,7 @@ class Entities(object):
     def __init__(self, mentions=[], hashtags=[], links=[]):
         self.mentions = self._createEntityList(mentions, MentionEntity)
         self.hashtags = self._createEntityList(hashtags, HashtagEntity)
-        self.links = self._createEntityList(links, MentionEntity)
+        self.links = self._createEntityList(links, LinkEntity)
 
     def _createEntityList(self, provided_data, entity_class):
         entity_list = []
@@ -302,7 +314,95 @@ class AppDotNet(object):
         url = 'https://alpha-api.app.net/stream/0/users/me/muted'
         return [UserData(**user_data) for user_data in self.make_authorized_request(url=url)]
 
-#Adding an Authorization header (preferred) Add the following header to your request:
-# Authorization: Bearer [access token]
-# where [access token] is the value of the user's access token.
+    def get_post(self, post_id):
+        """ Retrieve the specified post """
+        # seems that post_id has to > 0
+        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id
+        return Post(**self.make_authorized_request(url=url))
 
+    def get_post_replies(self, post_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """ Retrieve the replies to a post """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id + '/replies' + query_string
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def get_user_posts(self, user_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """ Retrieve the user's posts. """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/posts' + query_string
+        print url
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def get_user_mentions(self, user_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """ Retrieve the posts mentioning the user. """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/mentions' + query_string
+        print url
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def get_my_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """
+        Retrieve the user's stream.
+        These are the latest posts by the current user and the users they follow.
+
+        NEEDS stream scope
+        """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/posts/stream' + query_string
+        print url
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def get_global_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """
+        Retrieve the global stream.
+        These are the latest posts amongst all users.
+        """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/posts/stream/global' + query_string
+        print url
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def get_tagged_posts(self, hashtag, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
+        """
+        Retrieve recent posts with the specified hashtag.
+        """
+        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/posts/tag/' + hashtag + query_string
+        print url
+        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
