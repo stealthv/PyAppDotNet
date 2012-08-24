@@ -157,6 +157,14 @@ class LinkEntity(object):
         self.pos = kwargs['pos']
         self.len = kwargs['len']
 
+    @property
+    def json(self):
+        d = {'text': self.text,
+             'url': self.url,
+             'pos': self.pos,
+             'len': self.len}
+        return json.dumps(d)
+
 
 class Filter(object):
     """ A whitelist or blacklist for a post stream. """
@@ -342,7 +350,6 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/posts' + query_string
-        print url
         return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
 
     def get_user_mentions(self, user_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
@@ -355,7 +362,6 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/mentions' + query_string
-        print url
         return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
 
     def get_my_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
@@ -373,7 +379,6 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/posts/stream' + query_string
-        print url
         return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
 
     def get_global_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
@@ -389,7 +394,6 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/posts/stream/global' + query_string
-        print url
         return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
 
     def get_tagged_posts(self, hashtag, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
@@ -404,5 +408,28 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/posts/tag/' + hashtag + query_string
-        print url
         return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+
+    def new_post(self, text, in_reply_to=None, links=None):
+        """
+        Submits a new post by the current user.
+        The entities may contain links and annotations (not supported yet).
+        Any mentions in the entities will be ignored.
+
+        NEEDS write_post scope
+        """
+        post_data = {'text': text, 'reply_to': in_reply_to}
+#        post_data = {'text': text, 'reply_to': in_reply_to, 'links': '{"url": "http://google.com", "text": "This", "pos": 1, "len": 4}'}
+        # Convert link objects to json
+        # links_json = []
+        # for link in links:
+        #     links_json.append(link.json)
+        # if links_json:
+        #     post_data['links'] = links_json
+        post_data = urllib.urlencode(post_data)
+        url = 'https://alpha-api.app.net/stream/0/posts'
+        return Post(**self.make_authorized_request(url=url, post_data=post_data, method="POST"))
+
+    def delete_post(self, post_id):
+        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id
+        return Post(**self.make_authorized_request(url=url, method="DELETE"))
