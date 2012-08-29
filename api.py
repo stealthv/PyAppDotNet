@@ -13,14 +13,24 @@ class SCOPES():
     export = 'export'
 
 
+class AppDotNetObject(object):
+    def __init__(self, connection=None, **kwargs):
+        self.connection = connection
+        super(AppDotNetObject, self).__init__()
+
+    def __str__(self):
+        return self.__unicode__()
+
+
 class AppDotNetError(Exception):
     def __init__(self, message, url):
         Exception.__init__(self, message)
         self.url = url
 
 
-class UserData(object):
-    def __init__(self, **kwargs):
+class UserData(AppDotNetObject):
+    def __init__(self, connection, **kwargs):
+        super(UserData, self).__init__(connection, **kwargs)
         self.id = kwargs['id']
         self.username = kwargs['username']
         self.name = kwargs['name']
@@ -56,8 +66,181 @@ class UserData(object):
     def __unicode__(self):
         return u'user @' + self.username + u' [' + self.id + ']'
 
-    def __str__(self):
-        return self.__unicode__()
+    @classmethod
+    def with_id(cls, id, connection):
+        """
+        user_id can be:
+            - the actual id of the user
+            - 'me' for the currently authenticated user
+            - '@username' of the user
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + id
+        return cls(connection, **connection.make_authorized_request(url=url))
+
+    def follow(self):
+        """
+        Follow this user.
+
+        Returns an updated version of this user.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/follow'
+        return UserData(self.connection, **self.connection.make_authorized_request(url=url, method="POST"))
+
+    def unfollow(self):
+        """
+        Stop following this user.
+
+        Returns an updated version of this user.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/follow'
+        return UserData(self.connection, **self.connection.make_authorized_request(url=url, method="DELETE"))
+
+    def following(self):
+        """
+        Find out who this user is following.
+
+        Returns a list of UserData objects.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/following'
+        return [UserData(self.connection, **user_data) for user_data in self.connection.make_authorized_request(url=url)]
+
+    def followers(self):
+        """
+        Find out who this user follows.
+
+        Returns a list of UserData objects.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/followers'
+        return [UserData(self.connection, **user_data) for user_data in self.connection.make_authorized_request(url=url)]
+
+    def mute(self):
+        """
+        Mute this user.
+
+        Retuns a new version of the UserData.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/mute'
+        return UserData(self.connection, **self.connection.make_authorized_request(url=url, method="POST"))
+
+    def unmute(self):
+        """
+        Unmute this user.
+
+        Returns a new version of the UserData object.
+        """
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/mute'
+        return UserData(self.connection, **self.connection.make_authorized_request(url=url, method="DELETE"))
+
+    def all_muted(self):
+        """ Can only see current users muted users """
+        url = 'https://alpha-api.app.net/stream/0/users/me/muted'
+        return [UserData(self.connection, **user_data) for user_data in self.connection.make_authorized_request(url=url)]
+
+    def post(self, text, in_reply_to=None, links=None):
+        """
+        Submits a new post by the current user.
+        The entities may contain links and annotations (not supported yet).
+        Any mentions in the entities will be ignored.
+
+        NEEDS write_post scope
+
+        Returns the new Post object
+        """
+        post_data = {'text': text, 'reply_to': in_reply_to}
+#        post_data = {'text': text, 'reply_to': in_reply_to, 'links': '{"url": "http://google.com", "text": "This", "pos": 1, "len": 4}'}
+        # Convert link objects to json
+        # links_json = []
+        # for link in links:
+        #     links_json.append(link.json)
+        # if links_json:
+        #     post_data['links'] = links_json
+        post_data = urllib.urlencode(post_data)
+        url = 'https://alpha-api.app.net/stream/0/posts'
+        return Post(self.connection, **self.connection.make_authorized_request(url=url, post_data=post_data, method="POST"))
+
+    def posts(self,
+              since_id=None,
+              before_id=None,
+              count=None,
+              include_user=None,
+              include_annotations=None,
+              include_replies=None):
+        """
+        Retrieve the user's posts.
+
+        Returns a list of Post objects.
+        """
+        parameters = {
+            'since_id': since_id,
+            'before_id': before_id,
+            'count': count,
+            'include_user': include_user,
+            'include_annotations': include_annotations,
+            'include_replies': include_replies
+        }
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/posts' + query_string
+        return [Post(self.connection, **post_data) for post_data in self.connection.make_authorized_request(url=url)]
+
+    def stream(self,
+               since_id=None,
+               before_id=None,
+               count=None,
+               include_user=None,
+               include_annotations=None,
+               include_replies=None):
+        """
+        Retrieve the user's stream.
+        These are the latest posts by the current user and the users they follow.
+
+        NEEDS stream scope
+        """
+        parameters = {
+            'since_id': since_id,
+            'before_id': before_id,
+            'count': count,
+            'include_user': include_user,
+            'include_annotations': include_annotations,
+            'include_replies': include_replies
+        }
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/posts/stream' + query_string
+        return [Post(self.connection, **post_data) for post_data in self.connection.make_authorized_request(url=url)]
+
+    def mentions(self,
+                 since_id=None,
+                 before_id=None,
+                 count=None,
+                 include_user=None,
+                 include_annotations=None,
+                 include_replies=None):
+        """ Retrieve the posts mentioning the user. """
+        parameters = {
+            'since_id': since_id,
+            'before_id': before_id,
+            'count': count,
+            'include_user': include_user,
+            'include_annotations': include_annotations,
+            'include_replies': include_replies
+        }
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        url = 'https://alpha-api.app.net/stream/0/users/' + self.id + '/mentions' + query_string
+        return [Post(self.connection, **post_data) for post_data in self.connection.make_authorized_request(url=url)]
 
 
 class Description(object):
@@ -85,12 +268,13 @@ class ImageData(object):
         return response.read()
 
 
-class Post(object):
-    def __init__(self, **kwargs):
+class Post(AppDotNetObject):
+    def __init__(self, connection=None, **kwargs):
+        super(Post, self).__init__(connection, **kwargs)
         self.id = kwargs['id']
         self.user = None
         if 'user' in kwargs:  # may be omitted (e.g. if the user account has been deleted)
-            self.user = UserData(**kwargs['user'])
+            self.user = UserData(connection, **kwargs['user'])
         self.is_deleted = kwargs.get('is_deleted', False)  # may be omitted if not deleted
         self.created_at = kwargs['created_at']
         self.text = kwargs.get('text', '')  # may be omitted if deleted
@@ -115,8 +299,56 @@ class Post(object):
     def __unicode__(self):
         return u'Post #' + self.id + u' by: ' + unicode(self.user) + ' -- ' + self.text
 
-    def __str__(self):
-        return self.__unicode__()
+    @classmethod
+    def with_id(cls, id, connection):
+        """
+        Constructor to get the post with the specified post id.
+        """
+        # seems that post_id has to > 0
+        url = 'https://alpha-api.app.net/stream/0/posts/' + id
+        return cls(connection, **connection.make_authorized_request(url=url))
+
+    def delete(self):
+        """
+        Deletes the current post.
+
+        Returns a new Post object representing the response from app.net. This is done
+        instead of updating the current object incase you wanted to still refer to the old
+        data.
+        """
+        # TODO: Check that the post id is set
+        url = 'https://alpha-api.app.net/stream/0/posts/' + self.id
+        return Post(self.connection, **self.connection.make_authorized_request(url=url, method="DELETE"))
+
+    def replies(self,
+                since_id=None,
+                before_id=None,
+                count=None,
+                include_user=None,
+                include_annotations=None,
+                include_replies=None):
+        """
+        Retrieve the replies to this post.
+
+        Response is a list of Post objects.
+        """
+        parameters = {
+            'since_id': since_id,
+            'before_id': before_id,
+            'count': count,
+            'include_user': include_user,
+            'include_annotations': include_annotations,
+            'include_replies': include_replies
+        }
+        for key, value in parameters.items():
+            if value == None:
+                del parameters[key]
+        query_string = ''
+        if parameters.keys():
+            query_string = '?' + urllib.urlencode(parameters)
+        # TODO: handle a missing id
+        url = 'https://alpha-api.app.net/stream/0/posts/' + self.id + '/replies' + query_string
+        return [Post(self.connection, **post_data) for post_data in self.connection.make_authorized_request(url=url)]
 
 
 class Entities(object):
@@ -189,10 +421,10 @@ class Source(object):
         self.link = link
 
 
-class AppDotNet(object):
+class ApiConnection(object):
     """docstring for AppDotNet"""
     def __init__(self, client_id=None, client_secret=None, scopes=None, access_token=None):
-        super(AppDotNet, self).__init__()
+        super(ApiConnection, self).__init__()
         self.client_id = client_id
         self.client_secret = client_secret
         self.access_token = access_token
@@ -223,7 +455,7 @@ class AppDotNet(object):
         url = "https://alpha-api.app.net/stream/0/token"
         data = self.make_authorized_request(url)
         self.scopes = data['scopes']
-        self.user = UserData(**data['user'])
+        self.user = UserData(self, **data['user'])
 
     def has_all_requested_scopes(self):
         return_value = True
@@ -271,116 +503,6 @@ class AppDotNet(object):
             raise AppDotNetError(error_message, error_url)
         return self.access_token
 
-    def get_user(self, user_id):
-        """
-        user_id can be:
-            - the actual id of the user
-            - 'me' for the currently authenticated user
-            - '@username' of the user
-        """
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id
-        return UserData(**self.make_authorized_request(url=url))
-
-    def follow_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/follow'
-        return UserData(**self.make_authorized_request(url=url, method="POST"))
-
-    def unfollow_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/follow'
-        return UserData(**self.make_authorized_request(url=url, method="DELETE"))
-
-    def followed_by_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/following'
-        return [UserData(**user_data) for user_data in self.make_authorized_request(url=url)]
-
-    def followers_of_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/followers'
-        return [UserData(**user_data) for user_data in self.make_authorized_request(url=url)]
-
-    def mute_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/mute'
-        return UserData(**self.make_authorized_request(url=url, method="POST"))
-
-    def unmute_user(self, user_id=None, user=None):
-        if user_id == None:
-            user_id = user.id
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/mute'
-        return UserData(**self.make_authorized_request(url=url, method="DELETE"))
-
-    def my_muted_users(self):
-        """ Can only see current users muted users """
-        url = 'https://alpha-api.app.net/stream/0/users/me/muted'
-        return [UserData(**user_data) for user_data in self.make_authorized_request(url=url)]
-
-    def get_post(self, post_id):
-        """ Retrieve the specified post """
-        # seems that post_id has to > 0
-        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id
-        return Post(**self.make_authorized_request(url=url))
-
-    def get_post_replies(self, post_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
-        """ Retrieve the replies to a post """
-        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
-        for key, value in parameters.items():
-            if value == None:
-                del parameters[key]
-        query_string = ''
-        if parameters.keys():
-            query_string = '?' + urllib.urlencode(parameters)
-        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id + '/replies' + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
-
-    def get_user_posts(self, user_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
-        """ Retrieve the user's posts. """
-        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
-        for key, value in parameters.items():
-            if value == None:
-                del parameters[key]
-        query_string = ''
-        if parameters.keys():
-            query_string = '?' + urllib.urlencode(parameters)
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/posts' + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
-
-    def get_user_mentions(self, user_id, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
-        """ Retrieve the posts mentioning the user. """
-        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
-        for key, value in parameters.items():
-            if value == None:
-                del parameters[key]
-        query_string = ''
-        if parameters.keys():
-            query_string = '?' + urllib.urlencode(parameters)
-        url = 'https://alpha-api.app.net/stream/0/users/' + user_id + '/mentions' + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
-
-    def get_my_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
-        """
-        Retrieve the user's stream.
-        These are the latest posts by the current user and the users they follow.
-
-        NEEDS stream scope
-        """
-        parameters = {'since_id': since_id, 'before_id': before_id, 'count': count, 'include_user': include_user, 'include_annotations': include_annotations, 'include_replies': include_replies}
-        for key, value in parameters.items():
-            if value == None:
-                del parameters[key]
-        query_string = ''
-        if parameters.keys():
-            query_string = '?' + urllib.urlencode(parameters)
-        url = 'https://alpha-api.app.net/stream/0/posts/stream' + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
-
     def get_global_stream(self, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
         """
         Retrieve the global stream.
@@ -394,7 +516,7 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/posts/stream/global' + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
+        return [Post(self, **post_data) for post_data in self.make_authorized_request(url=url)]
 
     def get_tagged_posts(self, hashtag, since_id=None, before_id=None, count=None, include_user=None, include_annotations=None, include_replies=None):
         """
@@ -408,28 +530,4 @@ class AppDotNet(object):
         if parameters.keys():
             query_string = '?' + urllib.urlencode(parameters)
         url = 'https://alpha-api.app.net/stream/0/posts/tag/' + hashtag + query_string
-        return [Post(**post_data) for post_data in self.make_authorized_request(url=url)]
-
-    def new_post(self, text, in_reply_to=None, links=None):
-        """
-        Submits a new post by the current user.
-        The entities may contain links and annotations (not supported yet).
-        Any mentions in the entities will be ignored.
-
-        NEEDS write_post scope
-        """
-        post_data = {'text': text, 'reply_to': in_reply_to}
-#        post_data = {'text': text, 'reply_to': in_reply_to, 'links': '{"url": "http://google.com", "text": "This", "pos": 1, "len": 4}'}
-        # Convert link objects to json
-        # links_json = []
-        # for link in links:
-        #     links_json.append(link.json)
-        # if links_json:
-        #     post_data['links'] = links_json
-        post_data = urllib.urlencode(post_data)
-        url = 'https://alpha-api.app.net/stream/0/posts'
-        return Post(**self.make_authorized_request(url=url, post_data=post_data, method="POST"))
-
-    def delete_post(self, post_id):
-        url = 'https://alpha-api.app.net/stream/0/posts/' + post_id
-        return Post(**self.make_authorized_request(url=url, method="DELETE"))
+        return [Post(self, **post_data) for post_data in self.make_authorized_request(url=url)]
